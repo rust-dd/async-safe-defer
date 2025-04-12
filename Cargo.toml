@@ -2,6 +2,13 @@
 name = "async-safe-defer"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+description = "Minimal async- and sync-capable `defer` crate"
+homepage = "https://github.com/rust-dd/async-safe-defer"
+repository = "https://github.com/rust-dd/async-safe-defer"
+documentation = "https://docs.rs/async-safe-defer"
+keywords = ["async", "sync", "defer", "safe"]
+readme = "README.md"
 
 [dependencies]
 
