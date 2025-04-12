@@ -83,7 +83,6 @@ macro_rules! async_scope {
 /// A module for a no-alloc, fixed-capacity async scope.
 ///
 /// Only compiled if `feature = "no_alloc"` is enabled or when tests run.
-/// Appears in docs if `docsrs` or the feature is active.
 #[cfg_attr(docsrs, doc(cfg(feature = "no_alloc")))]
 #[cfg(any(feature = "no_alloc", test, docsrs))]
 pub mod no_alloc {
