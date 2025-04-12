@@ -3,6 +3,7 @@
 //! entirely (`no_alloc`), with a fixed-capacity array of deferred function pointers.
 
 #![cfg_attr(not(test), no_std)]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 extern crate alloc;
 use alloc::boxed::Box;
@@ -11,14 +12,11 @@ use core::future::Future;
 use core::pin::Pin;
 
 /// RAII-style guard for executing a closure at the end of a scope.
-///
-/// This synchronous variant does not require async. Inspired by Go's `defer`.
 #[must_use = "Defer must be stored in a variable to execute the closure"]
 pub fn defer<F>(f: F) -> impl Drop
 where
     F: FnOnce(),
 {
-    /// Inner type that holds the closure until drop.
     struct Defer<F: FnOnce()> {
         f: Option<F>,
     }
@@ -43,10 +41,7 @@ macro_rules! defer {
     };
 }
 
-/// An async-aware scope guard for storing and running deferred async closures.
-///
-/// This version uses dynamic allocation with `Vec<Box<...>>`. It requires the
-/// global allocator (heap).
+/// An async-aware scope guard that stores deferred async closures (heap-based).
 pub struct AsyncScope {
     defer: Vec<Box<dyn FnOnce() -> Pin<Box<dyn Future<Output = ()> + 'static>> + 'static>>,
 }
@@ -57,9 +52,7 @@ impl AsyncScope {
         AsyncScope { defer: Vec::new() }
     }
 
-    /// Registers an async closure that will be executed when `run()` is called.
-    ///
-    /// Deferred tasks are run in reverse order (LIFO).
+    /// Registers an async closure to be executed later (LIFO).
     pub fn defer<F>(&mut self, f: F)
     where
         F: FnOnce() -> Pin<Box<dyn Future<Output = ()> + 'static>> + 'static,
@@ -67,7 +60,7 @@ impl AsyncScope {
         self.defer.push(Box::new(move || Box::pin(f())));
     }
 
-    /// Executes all stored async tasks in reverse (stack-like) order.
+    /// Runs all stored async tasks in reverse order.
     pub async fn run(mut self) {
         while let Some(f) = self.defer.pop() {
             f().await;
@@ -75,11 +68,7 @@ impl AsyncScope {
     }
 }
 
-/// Macro that creates an async scope to automatically await all async defers.
-///
-/// Inside this block, you can register async cleanup tasks by calling
-/// `scope.defer(...)`, and they will be executed (awaited) at the end of the block
-/// in reverse order.
+/// Macro that creates an async scope to automatically await all defers.
 #[macro_export]
 macro_rules! async_scope {
     ($scope:ident, $body:block) => {
@@ -91,12 +80,12 @@ macro_rules! async_scope {
     };
 }
 
-/// A module providing a no-alloc implementation of a fixed-capacity async scope.
+/// A module for a no-alloc, fixed-capacity async scope.
 ///
-/// This variant does not rely on dynamic allocation. It stores `'static` function
-/// pointers in a fixed-size array and executes them in LIFO order. Each deferred
-/// function pointer must return a `Pin<Box<dyn Future<Output=()> + 'static>>`.
-#[cfg(any(feature = "no_alloc", test))]
+/// Only compiled if `feature = "no_alloc"` is enabled or when tests run.
+/// Appears in docs if `docsrs` or the feature is active.
+#[cfg_attr(docsrs, doc(cfg(feature = "no_alloc")))]
+#[cfg(any(feature = "no_alloc", test, docsrs))]
 pub mod no_alloc {
     use alloc::boxed::Box;
     use core::{future::Future, pin::Pin};
@@ -105,16 +94,13 @@ pub mod no_alloc {
     pub type DeferredFn = fn() -> Pin<Box<dyn Future<Output = ()> + 'static>>;
 
     /// A fixed-capacity async scope that does not use dynamic allocation.
-    ///
-    /// - `N` is the maximum number of deferred tasks.
-    /// - Each deferred function must be a `'static` function pointer.
     pub struct AsyncScopeNoAlloc<const N: usize> {
         tasks: [Option<DeferredFn>; N],
         len: usize,
     }
 
     impl<const N: usize> AsyncScopeNoAlloc<N> {
-        /// Creates a new `AsyncScopeNoAlloc` with a capacity of `N`.
+        /// Creates a new `AsyncScopeNoAlloc` with capacity `N`.
         pub const fn new() -> Self {
             Self {
                 tasks: [None; N],
@@ -124,7 +110,7 @@ pub mod no_alloc {
 
         /// Registers a `'static` function pointer to be called later.
         ///
-        /// Panics if the capacity `N` is exceeded.
+        /// Panics if capacity is exceeded.
         pub fn defer(&mut self, f: DeferredFn) {
             if self.len >= N {
                 panic!("No space left for more tasks.");
@@ -133,7 +119,7 @@ pub mod no_alloc {
             self.len += 1;
         }
 
-        /// Executes all stored tasks in reverse order, awaiting each one.
+        /// Executes all tasks in reverse order, awaiting each one.
         pub async fn run(&mut self) {
             while self.len > 0 {
                 self.len -= 1;
@@ -141,6 +127,19 @@ pub mod no_alloc {
                 (task)().await;
             }
         }
+    }
+
+    /// Macro to create a no-alloc async scope with fixed capacity.
+    #[cfg_attr(docsrs, doc(cfg(feature = "no_alloc")))]
+    #[macro_export]
+    macro_rules! no_alloc_async_scope {
+        ($scope:ident : $cap:expr, $body:block) => {
+            async {
+                let mut $scope = $crate::no_alloc::AsyncScopeNoAlloc::<$cap>::new();
+                $body
+                $scope.run().await;
+            }
+        };
     }
 }
 

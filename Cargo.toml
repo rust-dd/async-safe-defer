@@ -1,6 +1,6 @@
 [package]
 name = "async-safe-defer"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 license = "MIT"
 description = "Minimal async- and sync-capable `defer` crate"
@@ -18,3 +18,6 @@ tokio = { version = "1.44.2", features = ["rt", "macros"] }
 [features]
 default = []
 no_alloc = []
+
+[package.metadata.docs.rs]
+features = ["no_alloc"]
